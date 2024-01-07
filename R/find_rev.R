@@ -724,6 +724,138 @@ nix_build_exit_msg <- function(x) {
   return(err_msg)
 }
 
+#' Inititate and maintain an isolated, project-specific and pure R setup via Nix
+#' 
+#' Bootstraps an isolated project folder and adds sensible defaults to
+#' achieve reproducibiltiy and isolated software dependencies with highest
+#' run-time purity.
+#' 
+#' This general bootstrap helper does a couple of configurations that ensure
+#' that the project runs as isolated and pure as possible by default.
+#' Since a host RStudio session not launched via nix does not inherit
+#' environmental variables from `.zshrc` (on macOS), we need to add the path of
+#' the nixpkgs store to the `PATH` variable.
+#' 
+#' @param project_path Character with folder path to the isolated nix-R project.
+#' Defaults to `"."`, which is the current path in the working directory.
+#' If the folder does not exist yet, it will be created.
+#' @param message_type Character. Message type, defaults to `"simple"`, which
+#' gives mimimal but sufficient feedback. Other values are currently 
+#' `"verbose"`, which gives more detailed diagnostics.
+#' @export
+init <- function(project_path = ".",
+                 message_type = c("simple", "verbose")) {
+  message_type <- match.arg(message_type)
+  cat("\n### Bootstrapping isolated, project-specific R setup via Nix ###\n\n")
+  if (!dir.exists(project_path)) {
+    dir.create(path = project_path, recursive = TRUE)
+    project_path <- normalizePath(path = project_path)
+    cat("==> Created isolated nix-R project folder:\n", project_path, "\n")
+  } else {
+    project_path <- normalizePath(path = project_path)
+    cat("==> Existing isolated nix-R project folder:\n", project_path,
+      "\n")
+  }
+  # check if RStudio session is running.
+  is_nixr <- is_nix_rsession()
+  is_rstudio <- is_rstudio_session()
+  
+  # create project-local `.Rprofile` with pure settings
+  # first create the call, deparse it, and write it to .Rprofile
+  rprofile_quoted <- nix_rprofile()
+  rprofile_deparsed <- deparse_chr1(expr = rprofile_quoted, collapse = "\n")
+  rprofile_file <- file.path(project_path, ".Rprofile")
+  writeLines(text = rprofile_deparsed, file(rprofile_file))
+  
+  if (!is_nixr && is_rstudio) {
+    PATH <- set_nix_path()
+    cat(
+      paste0("\n==> Added `.Rprofile` entry for new R sessions in:\n", 
+        project_path),
+      "\n* Adding the location of the Nix store to `PATH`",
+      "environmental variable for new R sessions on host/docker Rstudio", 
+      "\n\n==> Also adjusting the same path via `Sys.setenv()`, so that system",
+      "commands can invoke key Nix commands like `nix-build` in this RStudio",
+      "session on the host operating system.\n"
+    )
+    cat("\n* Current `PATH` variable available in R session is:\n\n")
+    cat(PATH)
+  }
+  on.exit(close(file(rprofile_file)))
+}
+
+#' @noRd
+is_nix_rsession <- function() {
+  is_nixr <- nzchar(Sys.getenv("NIX_STORE"))
+  if (is_nixr) {
+    cat("==> R session running via Nix (nixpkgs)\n")
+    return(TRUE)
+  } else {
+    cat("\n==> R session running via host operating system or docker\n")
+    return(FALSE)
+  }
+}
+
+#' @noRd
+is_rstudio_session <- function() {
+  is_rstudio <- Sys.getenv("RSTUDIO") == "1"
+  if (is_rstudio) {
+    cat("\n==> R session running from RStudio\n")
+    return(TRUE)
+  } else {
+    cat("* R session not running from RStudio")
+    return(FALSE)
+  }
+}
+
+#' @noRd
+set_nix_path <- function() {
+  old_path <- Sys.getenv("PATH")
+  nix_path <- "/nix/var/nix/profiles/default/bin"
+  has_nix_path <- any(grepl(nix_path, old_path))
+  if (!has_nix_path) {
+    Sys.setenv(
+      PATH = paste(old_path, "/nix/var/nix/profiles/default/bin", sep = ":")
+    ) 
+  }
+  return(Sys.getenv("PATH"))
+}
+
+#' @noRd
+nix_rprofile <- function() {
+  quote( {
+    is_rstudio <- Sys.getenv("RSTUDIO") == "1"
+    is_nixr <- nzchar(Sys.getenv("NIX_STORE"))
+    if (!is_nixr && is_rstudio) {
+      # Currently, RStudio does not propagate environmental variables defined in 
+      # `$HOME/.zshrc`, `$HOME/.bashrc` and alike. This is workaround to 
+      # make the path of the nix store and hence basic nix commands available
+      # in an RStudio session
+      old_path <- Sys.getenv("PATH")
+      nix_path <- "/nix/var/nix/profiles/default/bin"
+      has_nix_path <- any(grepl(nix_path, old_path))
+      if (!has_nix_path) {
+        Sys.setenv(
+          PATH = paste(
+            old_path, "/nix/var/nix/profiles/default/bin", sep = ":"
+          )
+        )
+      }
+    }
+    
+    if (is_nixr) {
+      current_paths <- .libPaths()
+      userlib_paths <- Sys.getenv("R_LIBS_USER")
+      user_dir <- grep(paste(userlib_paths, collapse = "|"), current_paths)
+      new_paths <- current_paths[-user_dir]
+      # sets new library path without user library, making nix-R pure at 
+      # run-time
+      .libPaths(new_paths)
+    }
+  } )
+}
+
+
 
 #' Evaluate function in R or shell command via `nix-shell` environment
 #'
@@ -1243,7 +1375,7 @@ quote_rnix <- function(expr,
     cat("\n", Sys.getenv("NIX_PATH"))
     # fix library paths for nix R on macOS and linux; avoid permission issue
     current_paths <- .libPaths()
-    userlib_paths <- c("/Users/", "/home/")
+    userlib_paths <- Sys.getenv("R_LIBS_USER")
     user_dir <- grep(paste(userlib_paths, collapse = "|"), current_paths)
     new_paths <- current_paths[-user_dir]
     .libPaths(new_paths)
