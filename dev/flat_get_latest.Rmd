@@ -48,3 +48,4 @@ testthat::test_that("get_latest() fails as expected if error", {
 })
 
 ```
+
