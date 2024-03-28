@@ -46,3 +46,6 @@ testthat::test_that("get_latest() fails as expected if error", {
   testthat::expect_error(get_latest())
 
 })
+
+```
+
