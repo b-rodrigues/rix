@@ -3,7 +3,7 @@
 # >rix(r_ver = "976fa3369d722e76f37c77493d99829540d43845",
 #  > git_pkgs = list(package_name = "rix",
 #  > repo_url = "https://github.com/ropensci/rix/",
-#  > commit = "0d28163f217fa36ccf910ac9af0456838ca0e4b8"),
+#  > commit = "287e8bd5d41649247747a499e459ef33cc7c76e0"),
 #  > ide = "other",
 #  > project_path = "inst/extdata",
 #  > overwrite = TRUE)
@@ -18,8 +18,8 @@ let
       name = "rix";
       src = pkgs.fetchgit {
         url = "https://github.com/ropensci/rix/";
-        rev = "0d28163f217fa36ccf910ac9af0456838ca0e4b8";
-        sha256 = "sha256-IpZSIyNub+U9vh1mqHiC3WxcmqoUadkblxdjLeTLmp4=";
+        rev = "287e8bd5d41649247747a499e459ef33cc7c76e0";
+        sha256 = "sha256-TaSzPijuk2EdmXfghd89mvNHpVgNqfYJsydt5/BPmGw=";
       };
       propagatedBuildInputs = builtins.attrValues {
         inherit (pkgs.rPackages) 
